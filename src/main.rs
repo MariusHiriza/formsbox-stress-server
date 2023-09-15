@@ -4,6 +4,7 @@ use std::fs;
 use warp::hyper::body::Bytes;
 use warp::reply::Response;
 use std::sync::Arc;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 #[derive(Debug)]
 enum CustomError {
@@ -45,5 +46,11 @@ async fn main() {
 
     let routes = insert_route.or(read_route);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 6969)).await;
+    let addr = "localhost:6969"
+        .to_socket_addrs()
+        .expect("Failed to resolve the address")
+        .next()
+        .expect("No address found");
+
+    warp::serve(routes).run(addr).await;
 }
