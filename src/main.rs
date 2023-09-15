@@ -1,35 +1,47 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Result};
-use serde_derive::{Deserialize, Serialize};
-use std::fs;
+#![feature(proc_macro_hygiene, decl_macro)]
 
-#[derive(Deserialize, Serialize)]
+#[macro_use]
+extern crate rocket;
+#[macro_use]
+extern crate rocket_contrib;
+#[macro_use]
+extern crate serde_derive;
+
+use rocket::Data;
+use rocket::response::content;
+use rocket::config::{Config, Environment};
+use rocket_contrib::json::Json;
+use std::fs;
+use std::io::Read;
+
+#[derive(Serialize)]
 struct JsonResponse {
     data: String,
 }
 
-async fn insert_handler(body: web::Bytes) -> Result<HttpResponse> {
-    let body_str = String::from_utf8_lossy(&body);
+#[post("/insert", format = "application/json", data = "<input>")]
+fn insert_handler(input: Data) -> Json<JsonResponse> {
+    let mut body_str = String::new();
+    input.open().read_to_string(&mut body_str).expect("Failed to read data");
+
     let digest = md5::compute(body_str.as_bytes());
     let hash = format!("{:x}", digest);
-    Ok(HttpResponse::Ok().json(JsonResponse { data: hash }))
+    Json(JsonResponse { data: hash })
 }
 
-async fn read_handler() -> Result<HttpResponse> {
-    let content = fs::read_to_string("formbox_stress_test.json");
-    match content {
-        Ok(json) => Ok(HttpResponse::Ok().body(json)),
-        Err(_) => Ok(HttpResponse::InternalServerError().body("Error reading file")),
-    }
+#[get("/read")]
+fn read_handler() -> content::Json<String> {
+    let json = fs::read_to_string("formbox_stress_test.json").expect("Failed to read file");
+    content::Json(json)
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new()
-            .route("/insert", web::post().to(insert_handler))
-            .route("/read", web::get().to(read_handler))
-    })
-        .bind("localhost:6969")?
-        .run()
-        .await
+fn main() {
+    let config = Config::build(Environment::Staging)
+        .address("localhost")
+        .port(6969)
+        .finalize().unwrap();
+
+    rocket::custom(config)
+        .mount("/", routes![insert_handler, read_handler])
+        .launch();
 }
